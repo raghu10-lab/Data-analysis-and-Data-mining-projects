@@ -1,0 +1,755 @@
+---
+title: "Data 603 Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+options(max.print=1000000)
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r include = FALSE }
+library(binom)
+library(collapsibleTree)
+library(dbplyr)
+library(devtools)
+library(dplyr)
+library(EnvStats)
+library(ggformula)
+library(ggplot2)
+library(ggpubr)
+library(ggforce) 
+library(GGally)
+library(htmltools)
+library(ISLR)
+library(knitr)
+library(lawstat)
+library(lmtest)
+library(leaps)
+library(MASS)
+library(markdown)
+library(mctest)
+library(mosaic)
+library(mdsr)
+library(mosaicData)
+library(naniar)
+library(olsrr)
+library(plyr)
+library(purrr)
+library(rmarkdown)
+library(stringi)
+library(tibble)
+library(tidyr)
+library(tidyselect)
+library(tinytex)
+library(yaml)
+```
+
+\begin{center}
+# Data 603 Project Report
+\end{center}
+
+
+
+\begin{center}
+# Introduction
+\end{center}
+
+Unfortunately owning a vehicle in Canada isn’t a luxury, it’s a necessity. Temperature extremes and weather conditions make getting around in the winter very challenging, if not deadly. Aside from the larger centres like Toronto, Montreal, Ottowa, Vancouver, the population density is low and sparse enough that not all cities are as accessible. Covid19 is making public transport risky as well. 
+
+Last year the auto industry contributed \$19B to Canada's GDP, and it is one of Canada’s largest manufacturing sectors. The industry directly employs more than 125,000 people, with an additional 400,000 people in aftermarket services and dealership networks. Its worth noting the automotive sector pales to the Canadian Oil and Gas industry. Last year Canadian oil and natural gas provided \$110 billion to Canada’s GDP. In 2019, Canada’s energy sector directly employed more than 282,000 people and indirectly supported over 550,500 jobs. Furthermore, through taxation, Government revenues from energy were $17.9 billion in 2018. 
+
+There are many options when it comes to car ownership: new, used, re-stored, re-newed, pickup truck, SUV, sports car, or supercar. This project explores these options through KIjiji.According to Kikiji, "Kijiji is a platform that allows Canadians to exchange goods and services, find work, and build their businesses locally." Kijiji facilitates this project by connecting sellers and buyers. The seller posts an ad with (sometimes) relevant data, the buyer assess the data and a transaction can occur. The data entered by the seller drives this project. 
+
+To post a car for sale on Kijiji the seller is mentored through the data entry process and prompted for province, city, the VIN number for the car, plus other details. The data advantage here is that the data is semi structured (we suspect the data is housed in either a nosql, or mongodb database), consistent, and constrained. The seller can't misspell the manufacturer, or confuse models because the data is populated through drop down menus. The only free data entry points are price and kilometers, and the opportunity to select "other". These data cause issues. Some sellers price their cars into the millions, and others will price the car with a negative value in an attempt to exploit the ranking procedure and bring added attentions to the car. In some cases the seller fails to populate data and Kijiji defaults to "other". For example, if the seller does not select a color, kijiji defaults to "other" as a color. 
+
+The project aims to prepare a regression model the predicts price using as many kijiji predictors as necesarry and possible. Some of the predictors impart colinearities. For example, many manufactures manufacture the same car under multiple manufacturer names. General Motors Coroporation and Chevrolet both produce pickup trucks with the same model name and the distribution of prices are strongly correlated. 
+
+\begin{center}
+# Methodology
+\end{center}
+
+
+# Data Sources
+The project data was sourced from Kijiji postings in the folowing cities: Calgary, Edmonton, Toronto, Vancouver, Winnepeg, Fredericton, Halifax, Regina, Whitehorse, and Charlottetown. The data is not curated and is a sample of the most recent listings on the day it was collected. 
+
+
+# Data Loading and Preliminary Cleaning
+
+The data values for the project were fairly clean. Numerical data was clearly numerical, and categorical (string) data, like colors, came as strings. Some effort had to be spent on manual cleaning of data. For example, Some cars had prices of -999 or 999,999.00. These we removed manually.
+
+```{r echo =FALSE}
+
+
+carsf = read.csv('CarsFinal_Reduced.csv')
+carsf <- filter(carsf, !(Price<=2000 & Year>=2012 | Price>100000))
+
+#cars <- dplyr :: select(cars, -c('Cond', 'Carfax', 'Config'))
+carsf <- carsf[carsf$Price >= 0,]
+carsf <- carsf[carsf$Year >= 1928,]
+carsf <- carsf[carsf$Mileage <= 400000,]
+cars = carsf
+
+
+```
+
+
+# List of, Definition, and Exploration of Variables
+
+### Year (Continuous Independent Variable)
+This integer refers to the year of manufacture. The data spans 1928 to 2021, almost 100 years. This is continuous data. 
+
+The mean model year over all the data is 2014.14, implying the average age of a car posted on Kijiji is 6 years. The distribution of Years is strongly left skewed, as it should be; there are no 2022 cars on the road yet. The observed skewness is due to cars reaching the end of their service life and some collectible cars being restored.
+
+Entries where the Year was listed as "other" were deleted. Defining outliers outside the set of 1928 to 2021 is ineffective because Year is not a measured variable thus no outliers exist.
+
+
+```{r echo = FALSE } 
+#mean(cars$Year)
+
+coef = 1500
+barfill <- "steelblue"
+barlines <- "goldenrod2"
+
+ggplot(cars, aes(x=Year), color="red", size=3 ) +
+  geom_histogram(colour = barlines, fill = barfill) + 
+  stat_ecdf(aes(y=..y..*coef), color='darkgray', size=2) + 
+  scale_y_continuous(sec.axis=sec_axis(trans = ~./coef , name="percentage")) 
+
+
+```
+
+### Body Type (Categorical Independent Variable)
+Vehicles can be broadly classified by body type. The data contains the following body type classifications: 
+
+Minivan_Van, SUV_Crossover, Sedan, Hatchback, Wagon, Pickup, Coupe, Other, Convertible. 
+
+If a body type is listed as other, it was deleted from the dataset.   
+
+```{r echo = FALSE }
+
+body_table = data.frame(table(cars$BodyType ))
+body_table = body_table[order(body_table$Freq, decreasing = TRUE),]
+#row.names(body_table) <- NULL
+#make_table = make_table[1:21,]
+names(body_table)[names(body_table) == 'Var1'] <- 'BodyType'
+#nrow(cars)
+
+ggplot(data=body_table, aes(x=reorder(BodyType, -Freq), y=Freq)) +
+  geom_bar(stat="identity", fill="steelblue")+
+   labs(x = "BodyType") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90,hjust=0.95,vjust=0.2)) +
+  ggtitle("Distribution of Make Count (n=10760)") 
+
+
+    
+
+
+```
+
+
+### Make (Categorical Independent Variable)
+Make refers to the vehicle manufacturer. This data is a string and includes names like FORD or BMW, for example. It is unlikely that there are issues with this column. Mispelled manufacturers are impossible in the data set because the user must enter the data from a drop down list of values. 
+
+The data set includes 55 different Makes.
+
+```{r echo = FALSE }
+
+make_table = data.frame(table(cars$Make ))
+make_table = make_table[order(make_table$Freq, decreasing = TRUE),]
+row.names(make_table) <- NULL
+make_table = make_table[1:21,]
+names(make_table)[names(make_table) == 'Var1'] <- 'Make'
+#nrow(cars)
+
+ggplot(data=make_table, aes(x=reorder(Make, -Freq), y=Freq)) +
+  geom_bar(stat="identity", fill="steelblue")+
+   labs(x = "Make") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90,hjust=0.95,vjust=0.2)) +
+  ggtitle("Distribution of Make Count (n=10760)") 
+
+```
+
+### Model (Categorical Independent Variable)
+Manufacturers make a number of different vehicles and differentiate them as models. Tesla for example make electric cars and offer 4 different models: Model S, Model 3, Model X, and Model Y. This data is a string. 
+
+There are 576 different models. 
+
+### Kilometers (Continuous Independent Variable)
+
+Kilometers is an integer value and refers to the number of kilometers the vehicle has been driven. In some cases the user might have entered miles instead of kilometers but there is no way for us to know if that is the case. 
+
+
+```{r echo = FALSE }
+
+#max(cars$Mileage)
+
+coef = 700
+barfill <- "steelblue"
+barlines <- "goldenrod2"
+
+ggplot(cars, aes(x=Mileage), color="red", size=3 ) +
+  geom_histogram(colour = barlines, fill = barfill) + 
+  stat_ecdf(aes(y=..y..*coef), color='darkgray', size=2) + 
+  scale_y_continuous(sec.axis=sec_axis(trans = ~./coef , name="percentage")) 
+
+
+```
+
+### Wheel config (Categorical Independent Variable)
+
+Wheel config refers to the driveline configuration of a vehicle. The data does not consider motorcycles. All entries have at least 4 wheels. Vehicles can have the following drive system
+
+Front-wheel drive (FWD), All-wheel drive (AWD),na,4 x 4,Rear-wheel drive (RWD),Other
+
+AWD is not the same as 4x4. AWD means all wheels are driven at all times, whereas 4x4 means that the driver can select 2wd or 4wd.
+
+
+```{r echo = FALSE }
+
+wheel_table = data.frame(table(cars$WheelConf  ))
+wheel_table <- wheel_table %>% 
+  #arrange(desc(Var1)) %>%
+  mutate(prop = as.integer(wheel_table$Freq/sum(wheel_table$Freq) *100)) %>%
+  mutate(ypos = cumsum(prop)- 0.5*prop )
+
+wheel_table <- wheel_table %>% 
+  mutate(end = 2 * pi * cumsum(Freq)/sum(Freq),
+         start = lag(end, default = 0),
+         middle = 0.5 * (start + end),
+         hjust = ifelse(middle > pi, 1, 0),
+         vjust = ifelse(middle < pi/2 | middle > 3 * pi/2, 0, 1))
+
+names(wheel_table)[names(wheel_table) == 'Var1'] <- 'Wheel_Conf'
+
+ggplot(wheel_table) + 
+  geom_arc_bar(aes(x0 = 0, y0 = 0, r0 = 0, r = 1,
+                   start = start, end = end, fill = Wheel_Conf)) +
+  geom_text(aes(x = 1.05 * sin(middle), y = 1.05 * cos(middle), label = paste(prop,"%"),
+                hjust = hjust, vjust = vjust)) +
+  coord_fixed() +
+  scale_x_continuous(limits = c(-1.25, 1.25),  # Adjust so labels are not cut off
+                     name = "", breaks = NULL, labels = NULL) +
+  scale_y_continuous(limits = c(-1.25, 1.25),      # Adjust so labels are not cut off
+                     name = "", breaks = NULL, labels = NULL) 
+
+```
+
+### Transmission (Categorical Independent Variable)
+
+Transsmission refers to how gears are selected in the vehicle. Either the vehicle is automatic, or the gears are selected manually. There are only two classifications for this predictor: Automatic and Manual.
+
+
+```{r echo = FALSE }
+
+trans_table = data.frame(table(cars$Transmission  ))
+
+trans_table <- trans_table %>% 
+  mutate(prop = as.integer(trans_table$Freq/sum(trans_table$Freq) *100)) %>%
+  mutate(ypos = cumsum(prop)- 0.5*prop )
+
+trans_table <- trans_table %>% 
+  mutate(end = 2 * pi * cumsum(Freq)/sum(Freq),
+         start = lag(end, default = 0),
+         middle = 0.5 * (start + end),
+         hjust = ifelse(middle > pi, 1, 0),
+         vjust = ifelse(middle < pi/2 | middle > 3 * pi/2, 0, 1))
+
+names(trans_table)[names(trans_table) == 'Var1'] <- 'Transmission'
+
+ggplot(trans_table) + 
+  geom_arc_bar(aes(x0 = 0, y0 = 0, r0 = 0, r = 1,
+                   start = start, end = end, fill = Transmission)) +
+  geom_text(aes(x = 1.05 * sin(middle), y = 1.05 * cos(middle), label = paste(prop,"%"),
+                hjust = hjust, vjust = vjust)) +
+  coord_fixed() +
+  scale_x_continuous(limits = c(-1.25, 1.25),  # Adjust so labels are not cut off
+                     name = "", breaks = NULL, labels = NULL) +
+  scale_y_continuous(limits = c(-1.25, 1.25),      # Adjust so labels are not cut off
+                     name = "", breaks = NULL, labels = NULL)
+  
+
+  
+```
+
+
+### Fuel (Categorical Independent variable)
+This predictor refers to the energy source for the vehicle. There are four different categories: Gasoline, Diesel, Hybrid-Electric, and Electric.
+
+```{r echo = FALSE }
+
+fuel_table = data.frame(table(cars$Fuel  ))
+fuel_table <- fuel_table %>% 
+  mutate(prop = as.integer(fuel_table$Freq/sum(fuel_table$Freq) *100)) %>%
+  mutate(ypos = cumsum(prop)- 0.5*prop )
+
+fuel_table <- fuel_table %>% 
+  mutate(end = 2 * pi * cumsum(Freq)/sum(Freq),
+         start = lag(end, default = 0),
+         middle = 0.5 * (start + end),
+         hjust = ifelse(middle > pi, 1, 0),
+         vjust = ifelse(middle < pi/2 | middle > 3 * pi/2, 0, 1))
+
+names(fuel_table)[names(fuel_table) == 'Var1'] <- 'Fuel'
+
+ggplot(fuel_table) + 
+  geom_arc_bar(aes(x0 = 0, y0 = 0, r0 = 0, r = 1,
+                   start = start, end = end, fill = Fuel)) +
+  geom_text(aes(x = 1.05 * sin(middle), y = 1.05 * cos(middle), label = paste(prop,"%"),
+                hjust = hjust, vjust = vjust)) +
+  coord_fixed() +
+  scale_x_continuous(limits = c(-1.25, 1.25),  # Adjust so labels are not cut off
+                     name = "", breaks = NULL, labels = NULL) +
+  scale_y_continuous(limits = c(-1.25, 1.25),      # Adjust so labels are not cut off
+                     name = "", breaks = NULL, labels = NULL)
+  
+
+
+```
+
+
+
+
+### City (Categorical independent Variable)
+Data was collected for vehicles in the following cities: Calgary, Edmonton, Toronto, Vancouver, Winnepeg, Fredericton, Halifax, Regina, Whitehorse, and Charlottetown. The data was collected randomly. No effort was made to curate it. 
+
+# Price (Continuous Dependent Variable )
+
+The most important variable in the study, and the target of the study, is price. Price was a difficult variable to manage becuase it is a data that was not controlled by Kijiji. Some users priced their cars strangely. There were brand new cars priced in the hundreds of dollars. There were cars that held real world values around \$15,000 priced in the millions or at \$-999. After a mechanical cleaning of outliers, we observed a mean car price of 22573.64 over all data points. The histogram of car prices shows a strongly right skewed distribution.
+
+```{r}
+
+#mean(cars$Price)
+
+coef = 700
+barfill <- "steelblue"
+barlines <- "goldenrod2"
+
+ggplot(cars, aes(x=Price), color="red", size=3 ) +
+  geom_histogram(colour = barlines, fill = barfill) + 
+  stat_ecdf(aes(y=..y..*coef), color='darkgray', size=2) + 
+  scale_y_continuous(sec.axis=sec_axis(trans = ~./coef , name="percentage")) 
+
+```
+
+Some very interesting relationshsips fall out of an examination of the relationship between price and various categorical variables. Deep examination of these relationships falls outside the scope of this project so we will provide only a few observations. 
+
+There appears to be s spatial trend in car pricing where cars in Calgary, Edmonton, Regina, Vancouver, Whiethorse and Winnegpeg are more expensive than the rest of the cities in the study. Convertibles and Pickups are by far the most expensive vehicles on Kijiji. Color plays a significant role in the pricing of a car, and as one would expect, Beige cars are priced lower than any other car. Lastly, 4x4s have the highest asking price followed by All Wheel Drive cars. IN Canada's winter climate traction has a high price point.     
+
+```{r echo= FALSE }
+# mean(cars$Price)
+
+ggplot(cars, aes(x=LOC, y=Price, fill=LOC)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90,hjust=0.95,vjust=0.2)) 
+
+ggplot(cars, aes(x=BodyType, y=Price, fill=BodyType)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90,hjust=0.95,vjust=0.2)) 
+
+ggplot(cars, aes(x=Color, y=Price, fill=Color)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90,hjust=0.95,vjust=0.2)) 
+
+ggplot(cars, aes(x=WheelConf, y=Price, fill=WheelConf)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 90,hjust=0.95,vjust=0.2)) 
+
+
+```
+
+
+\begin{center}
+## Modelling Plan
+\end{center}
+
+Our planned modelling approach will be to first identify and manage known data problems like strong linear relationships among the predictors, or colinearities. We know the data has strong relationships between Make/Model/Price for pickups. This is because a few manufacturers make the same pickup but rebrand them under various maufacturer names. The public know this and some trucks have strong correlation in pricing. We will first attempt to acknowledge and illustrate the colinearity before moving on to multiple regression. 
+
+After addressing the intrinsic data issues, we will move on to a simple multiple regression model where we will identify predictor candidates for the next phase of modeling refinement where we consider interactions. In the simple multiple regression section of the report we will rely on tools like t-tests, f-tests, and ANOVA to select the best simple model. 
+
+Once in the refiinement phase our mdelling tactic will be to attempt to iteratvely refine the model using the following loop:
+
+1. Is the linearity assumption honored?
+2. Are the residuals normally distributed? 
+3. Are the residuals homoscedastic?
+4. Do the residuals exhibit a trend with the year of observation?
+5. Do we need to manage outliers?
+
+The aforementioned tests will be relied upon to help us contstruct the best price prediction model we can. We will to reach this goal, we will add or remove predictor data as required. 
+
+
+## Known, but unavoidable linearities
+
+There are known, but unavoidable colinearities within the data set. Colinearities can cause issues when calculating coefiecients. The issue is generated when we take $X^T X$ to calculate the coeficients. When transposed, the values in the matrix can be inflated by correlations near 1, but variance can also be inflated when there aren't enough predictor data. This is particularly the case when using categorical variables: certain combinations just dont have many, or any, data. 
+
+In our case the combinatorial generated by categorical data caused issues because cars are by their nature valued by the combination of options and models. Some manufactures like Dodge/Ram, and  GMC/Chevrolet Chevrolet/Buick build and sell vehicles that are optioned identically and have similar market appeal and thus nearly the same price point. Consider the Chevrolet and GMC 1500 series pickups. 
+
+
+```{r echo=FALSE}
+
+chevy = filter(cars,Make == 'Chevrolet' & BodyType =='Pickup' & Model == 'Silverado 1500'& Year>=2015)
+gmc = filter(cars,  Make == 'GMC' & BodyType =='Pickup' & Model=='Sierra 1500'& Year>=2015 )
+
+meanchev = as.integer(mean(chevy$Price))
+#meanchev
+meangmc = as.integer(mean(gmc$Price))
+#summary(gmc)
+
+gmc_chev_combo = rbind(chevy, gmc)
+
+ggplot(gmc_chev_combo, aes(Price, fill = Make)) + 
+  geom_histogram(alpha = 0.4) +
+  geom_vline(aes(xintercept=meanchev), color="black", linetype="dashed", size=1)+
+  geom_text(aes(x=meanchev-2000, label=paste('Chev=', meanchev), y=20), colour="red",            angle=90,text=element_text(size=11)) +
+  geom_vline(aes(xintercept=meangmc), color="black", linetype="dashed", size=1) +
+  geom_text(aes(x=meangmc+2000, label=paste('GMC=', meangmc), y=20), colour="blue", 
+            angle=90,text=element_text(size=11)) +
+  geom_vline(xintercept=200, colour="grey") 
+
+nchev = nrow(chevy)
+nchev
+
+ngmc = nrow(gmc)
+ngmc
+
+chevy = chevy[1:ngmc,]
+
+plot(chevy$Price,gmc$Price)
+
+```
+
+# Sensical Models versus Nonsensical Models
+
+During the model exploration phase some predictors fell in and out of the model. We used variance inflation factor as a technique to select or reject a predictor, and some of the predictors inflated the variance to values that are thought to be high. In some modeling exercises these predictors would be rejected. In our case, VIF would have called for the rejection of some predictors that are essential to the utility of the model, namely Make and Model. 
+
+Early in the modeling exercise we experienced VIFs in the order of hundreds and thousands. We chose to over look VIF values for these predictors, because of the essential nature of Make and Model in predicting car price. Consider predicting the price of a sedan for example. It is generally well known that a 2020 Mercedes C Class will be priced higher than a 2020 Kia Rio. Were we to reject Make or Model from the model the model would be somewhat compromised. It is for this reason we overlooked VIF values when considering what we call essential predictors. 
+
+
+# First Order Model Testing for Linearity
+
+We built a first-order model which considered all of the original variables from the dataset namely:
+  
+location (city), make (manufacturer), model, bodytype, year, mileage, color, fuel, transmission (manual/automatic), and wheel configuration (2wd,4wd)
+
+
+In our first attempt at running the full model with all the data, we were having performance issues with R-studio both on the university data science hub as well as running a local instance of the program.  This was attributed to the large number of combinations categorical data of makes, models, city as well as the dataset itself which contained over 6500 lines of code.
+
+For the purpose of VIF testing, we decided try working with a smaller subset of our data.  A sample of 2000 cars were taken from the original data set to perform these tests.  Once our final list of variables were selected, a VIF test was run using the entire dataset.
+
+Model 1:
+In the first model, the VIF values for most makes and models were infinite.  This was due to the fact that most make of a car are synonymous with one make. For example there is only one Focus model that is produced by Ford. It was decided to combine the Make and Model of each vehicle into a single name, MakeModel.  We also decided that, based on relatively high p-values, color did not appear to be a significant contributor and was removed from the model.
+
+Model 2:
+The result of combining make and model resulted in a significant drop in VIF values; however, within the makemodel variable, the VIF values ranged from 2.5 to 460, which was a similar range of the variable bodytype, which had a range of 4.7 to 460.  From this it was determined that bodytype had colinearity issues with makemodel. This was attributed to the fact that many makemodels had only one body type (for example the Ford F-150 is only available as a pickup). We decided to combine bodytype to makemodel to create a single variable make_model_bodytype.  We also decided that we would drop Wheelconf as a variable due to its relatively high vIF and high p-values.
+
+
+Model 3:
+The combined variable make_mode_bodytype resulted in a significant drop in the VIF values from an average value of 79 to 3.3.  At this point we decided to drop transmission as a variable due to the fact that its p-value of 0.35 indicated that it was not a significant contributor.  As noted above, approximately 96% of the vehicles within the data set have automatic transmissions.
+
+
+Model 4:
+This was our final first order model which was run on the sample of 2000 cars within our data set. Most of the variables show an acceptable value of VIF <5.  The compbined Make_Model_Bodytype variable had and average VIF value of 3.27 with a range of 1.50 to 36.71.  Additional work could have been done to reduce the number of Make_Model_Bodytype entities by combining some bodytypes. For example, the Volkswagon Jetta Sedan and Wagon could be considered as the same car. The VIF's for these two bodytypes were 14.85 and 1.5 respectfully.  Combining the two would have reduced the higher value to something more acceptable.
+
+
+Final First Order Model:
+With less variables, it was now possible to run a VIF test for the remaining variables for the entire data set.  Although there were some changes to the VIF values as compared to the smaller data set, we felt that we had successfully reduced the impact of multicolinearity on our model and would move to the next step of looking at variable interactions and higher order models.
+
+
+
+
+
+
+
+```{r echo=FALSE}
+options(max.print=10000)
+cars = read.csv('CarsFinal.csv')
+
+car_sample=sample_n(cars,2000)
+
+
+model_1 = lm(Price ~ factor(LOC)+factor(Make)+factor(Model) + Year + Mileage+factor(BodyType)+ factor(Color) + factor(Fuel)+ factor(Transmission)+factor(WheelConf), data = car_sample)
+
+model_2 = lm(Price ~ factor(LOC)+factor(MakeModel) + Year + Mileage+factor(BodyType)+ factor(Fuel)+ factor(Transmission)+factor(WheelConf), data = car_sample)
+
+model_3 = lm(Price ~ factor(LOC)+factor(Make_Model_BodyType) + Year + Mileage+ factor(Fuel)+factor(Transmission), data = car_sample)
+
+model_4 = lm(Price ~ factor(LOC)+factor(Make_Model_BodyType) + Year + Mileage+  factor(Fuel), data = car_sample)
+
+final_first_order_model = lm(Price ~ factor(LOC)+factor(Make_Model_BodyType) + Year + Mileage+  factor(Fuel), data = cars)
+
+
+#imcdiag(model_1, method="VIF")
+#summary(model_1)
+
+#imcdiag(model_2, method="VIF")
+#summary(model_2)
+
+#imcdiag(model_3, method="VIF")
+#summary(model_3)
+
+#imcdiag(model_4, method="VIF")
+#summary(model_4)
+
+#imcdiag(final_first_order_model, method="VIF")
+#summary(final_first_order_model)
+
+```
+
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+options(max.print=1000000)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+library(binom)
+library(collapsibleTree)
+library(dbplyr)
+library(devtools)
+library(dplyr)
+library(EnvStats)
+library(ggformula)
+library(ggplot2)
+library(ggpubr)
+library(GGally)
+library(htmltools)
+library(ISLR)
+library(knitr)
+library(lawstat)
+library(lmtest)
+library(leaps)
+library(MASS)
+library(markdown)
+library(mctest)
+library(mosaic)
+library(mdsr)
+library(mosaicData)
+library(nycflights13)
+library(olsrr)
+library(plyr)
+library(purrr)
+library(rmarkdown)
+library(stringi)
+library(tibble)
+library(tidyr)
+library(tidyselect)
+library(tinytex)
+library(yaml)
+```
+
+```{r}
+carsf = read.csv('CarsFinal_Reduced.csv')
+carsf <- filter(carsf, !(Price<=2000 & Year>=2012 | Price>100000))
+head(carsf,4)
+```
+
+```{r}
+#full modal test
+
+m1 = lm(Price ~ factor(Make) + Model + BodyType + Color + WheelConf+ Transmission + Year + Mileage + factor(Fuel) + LOC, data = carsf)
+
+m2 = lm(Price ~ 1, data = carsf )
+
+anova(m2,m1)
+```
+
+
+```{r}
+#mt = lm(Price ~ factor(Make_Model_BodyType) + Year + Mileage + factor(Fuel) + LOC, data = carsf)
+
+
+lev=hatvalues(mod6)
+p = length(coef(mod6))
+n = nrow(carsf)
+outlier = lev[lev>(3*p/n)]
+print(outlier[])
+
+
+plot(mt,pch=18,col="red",which=c(4))
+
+# 196,2626,6058,1260,737,532,5199,5277,2776,5295,1083,4926,5175,5956,88,1958,3508,281,
+
+
+clean= carsf[-c(25, 473,889,959,2637,2643,2679,3114,3155,3192,3672,3837,4089,4743,4917,5205,5218,5578,6324,6431),]
+
+#summary(mt)
+#fuel is not significant in our model hence fuel gets kicked out
+```
+
+
+
+
+```{r}
+#MODEL WITH INTERACTION
+
+mt3 = lm(Price ~ (factor(Make_Model_BodyType) + Year  + Mileage + LOC)^2, data = clean)
+
+
+#summary(mt3)
+
+#based on these results we removed Mileage*LOC form our model
+
+mt4 = lm(Price ~ factor(Make_Model_BodyType) + Year  + Mileage + factor(LOC) + factor(Make_Model_BodyType)*Year + factor(Make_Model_BodyType)*Mileage + factor(Make_Model_BodyType)*factor(LOC) + Year*Mileage + Year*factor(LOC), data = clean)
+
+#summary(mt4)
+
+
+```
+
+```{r}
+
+#LOOKING AT THE GRAPH ABOVE HIGHER ORDER TERMS
+
+library(GGally)
+
+pairs(Price ~ factor(Make_Model_BodyType) + Year  + Mileage + factor(LOC) + factor(Make_Model_BodyType)*Year + factor(Make_Model_BodyType)*Mileage + factor(Make_Model_BodyType)*LOC + Year*Mileage + Year*factor(LOC) , data = clean, panel = panel.smooth)
+
+```
+
+```{r}
+#LOOKING AT THE GRAPH ABOVE Higher order terms for Year and Mileage were added
+
+mt5 = lm(Price ~ factor(Make_Model_BodyType) + Year  + Mileage + factor(LOC) +I(Mileage^2) + I(Year^2) + factor(Make_Model_BodyType)*Year + factor(Make_Model_BodyType)*Mileage + factor(Make_Model_BodyType)*factor(LOC) + Year*Mileage + Year*factor(LOC) , data = clean)
+
+#summary(mt5)
+
+# I(Mileage^2) was removed
+
+
+mt6 = lm(Price ~ factor(Make_Model_BodyType) + Year  + Mileage + factor(LOC) + I(Year^2) + factor(Make_Model_BodyType)*Year + factor(Make_Model_BodyType)*Mileage + factor(Make_Model_BodyType)*factor(LOC) + Year*Mileage + Year*factor(LOC) , data = clean)
+
+#summary(mt6)
+
+
+
+
+# On checking the results of summary for mt6 Year*Factor(LOC) interaction term was also removed to further reduce the model. The model below has all significant terms and nice radj
+
+
+#based on above results Year*factor(LOC) gets kicked out following below is the best modal
+
+mt7 = lm(Price ~ factor(Make_Model_BodyType) + Year  + Mileage + factor(LOC) + I(Year^2) + factor(Make_Model_BodyType)*Year + factor(Make_Model_BodyType)*Mileage + factor(Make_Model_BodyType)*factor(LOC) + Year*Mileage , data = clean)
+
+#summary(mt7)
+
+#confirming the results with anova test
+anova(mt6,mt7)
+
+#including cubic or higher terms doesn't improve R adjs significantly but adds overfitting to the model so only going as far as square terms
+
+
+
+```
+Checking Assumption
+```{r}
+#linearity assumption is somewhat followed
+
+mod6 = lm(Price ~ factor(Make_Model_BodyType) + Year  + Mileage + factor(LOC) + I(Year^2) + factor(Make_Model_BodyType)*Year + factor(Make_Model_BodyType)*Mileage + factor(Make_Model_BodyType)*factor(LOC) + Year*Mileage, data = clean)
+
+
+library(ggplot2) 
+
+
+ggplot(mod6, aes(x=.fitted, y=.resid)) +
+  geom_point() + geom_smooth()+
+  geom_hline(yintercept = 0) 
+
+
+```
+
+```{r}
+#Heteroscedasticity
+library(lmtest)
+
+plot(mod6, which=1)
+bptest(mod6)
+
+#test provides small p value hence an evidence to suggest that Heteroscedasticity does exist
+```
+
+```{r}
+par(mfrow=c(1,2))
+hist(residuals(mod6))
+plot(mod6, which=2)
+
+shapiro.test(residuals(mod6)[0:5000])$p.value
+
+
+#test provides evidence to suggest that normality does not exist
+```
+
+```{r}
+#applying box cox transformation
+
+library(lmtest)
+library(MASS) 
+bc=boxcox(mod6,lambda=seq(-5,5))
+
+bestlambda=bc$x[which(bc$y==max(bc$y))]
+bestlambda
+
+
+```
+
+```{r}
+pro_model = lm((((Price^0.3535354)-1)/ 0.3535354) ~  factor(Make_Model_BodyType) + Year  + Mileage + factor(LOC) + I(Year^2) + factor(Make_Model_BodyType)*Year + factor(Make_Model_BodyType)*Mileage + factor(Make_Model_BodyType)*factor(LOC) + Year*Mileage, data = clean)
+
+
+bptest(pro_model)
+
+shapiro.test(residuals(pro_model)[0:5000])$p.value
+
+#summary(pro_model)
+
+#gives higher radj and lower rmse
+
+#brings up the p value for bp test and shapiro test but not significantly enough to say that heteroscedacity is gone and normality assumption has met. As those 2 assumptions are still not met
+```
+
+#Prediction Cases
+
+Two samples of cars were chosen to perform an analysis of our model.  
+
+The first sample was chosen to look at two groups of vehicles with step changes in one of the model variables at a time.   The first vehicle was the BMW 5-Series Sedan.  The first two rows are cars that are both 2011 models located in Calgary with different mileage.  The third is the same car two but a 2018 model.  The fourth car is the same as car 1 but is located in Vancouver.  With the exception of car 3 (Year 2018), the model predicted very closely to the actual price.
+
+A second grouping was chosen for a 2009 Ford F-150 pickup, which is a different bodytype (pickup vs sedan).  Four different cities were chosen for this group with varying mileages.  The model also gave reasonable predictions for these vehicles. 
+
+
+```{r}
+sample1=read.csv('PredictSample.csv', header = TRUE)
+sample2=read.csv('PredictSample2.csv', header = TRUE)
+
+predict=exp(log((suppressWarnings(predict(pro_model, sample1))*0.3535354)+1)/0.3535354)
+print(predict)
+
+predict2=exp(log((suppressWarnings(predict(pro_model, sample2))*0.3535354)+1)/0.3535354)
+print(predict2)
+
+
+```
+
+
+
+
+
